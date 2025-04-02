@@ -479,13 +479,13 @@ class Window:
         
         # Draw the quad with texture coordinates
         gl.glBegin(gl.GL_QUADS)
-        gl.glTexCoord2f(0, 0)
-        gl.glVertex2f(x, y)
-        gl.glTexCoord2f(1, 0)
-        gl.glVertex2f(x + width, y)
-        gl.glTexCoord2f(1, 1)
-        gl.glVertex2f(x + width, y + height)
         gl.glTexCoord2f(0, 1)
+        gl.glVertex2f(x, y)
+        gl.glTexCoord2f(1, 1)
+        gl.glVertex2f(x + width, y)
+        gl.glTexCoord2f(1, 0)
+        gl.glVertex2f(x + width, y + height)
+        gl.glTexCoord2f(0, 0)
         gl.glVertex2f(x, y + height)
         gl.glEnd()
         
