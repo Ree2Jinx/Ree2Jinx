@@ -1,0 +1,33 @@
+# ImaginaryConsole Switch 2 Production Keys File
+
+# Master keys
+master_key_00 = 0123456789abcdef0123456789abcdef
+master_key_01 = fedcba9876543210fedcba9876543210
+master_key_02 = abcdef0123456789abcdef0123456789
+master_key_03 = 01234567890abcdef01234567890abcdef
+
+# Crypto keys
+header_key = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+key_area_key_application_00 = 0123456789abcdef0123456789abcdef
+key_area_key_application_01 = abcdef0123456789abcdef0123456789
+key_area_key_ocean_00 = fedcba9876543210fedcba9876543210
+key_area_key_ocean_01 = 010203040506070809000a0b0c0d0e0f
+
+# KEK (Key Encryption Keys)
+titlekek_00 = 0123456789abcdef0123456789abcdef
+titlekek_01 = fedcba9876543210fedcba9876543210
+titlekek_02 = abcdef0123456789abcdef0123456789
+titlekek_03 = 0f0e0d0c0b0a00090807060504030201
+
+# Package keys (PKG1/PKG2)
+package1_key_00 = 0123456789abcdef0123456789abcdef
+package1_key_01 = fedcba9876543210fedcba9876543210
+package2_key_00 = abcdef0123456789abcdef0123456789
+package2_key_01 = 0f0e0d0c0b0a00090807060504030201
+
+# Other system keys
+eticket_key_00 = 0123456789abcdef0123456789abcdef
+rsa_oaep_kek_generation_source = fedcba9876543210fedcba9876543210
+key_generation_source = abcdef0123456789abcdef0123456789
+aes_kek_generation_source = 0f0e0d0c0b0a00090807060504030201
+aes_key_generation_source = 010203040506070809000a0b0c0d0e0f 

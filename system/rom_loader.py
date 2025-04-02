@@ -19,108 +19,207 @@ class RomError(Exception):
 
 
 class KeysManager:
-    """Manages encryption keys for ROM decryption"""
+    """Manages encryption keys for ROM decryption
+    
+    This class handles the loading and management of two types of key files:
+    1. prod.keys: Contains system-level keys such as header_key, key_area_keys, etc.
+    2. title.keys: Contains game-specific decryption keys indexed by titleId
+    
+    Both files should be located in a 'keys' directory and follow the format:
+    key_name = hex_value
+    """
     
     def __init__(self, keys_path):
         """Initialize the keys manager
         
         Args:
-            keys_path: Path to the keys file
+            keys_path: Path to the keys directory or prod.keys file
         """
         self.logger = logging.getLogger("ImaginaryConsole.KeysManager")
-        self.keys_path = Path(keys_path)
-        self.keys = {}
         
-        # Flag indicating if keys are loaded
-        self.keys_loaded = False
+        # Handle both directory and direct file path
+        self.keys_path = Path(keys_path)
+        if self.keys_path.is_file():
+            # If user provided a direct file path, use it for prod.keys
+            self.keys_dir = self.keys_path.parent
+            self.prod_keys_path = self.keys_path
+        else:
+            # If user provided a directory, use it as the keys directory
+            self.keys_dir = self.keys_path
+            self.prod_keys_path = self.keys_dir / "prod.keys"
+        
+        # Set the title keys path
+        self.title_keys_path = self.keys_dir / "title.keys"
+        
+        # Initialize key dictionaries
+        self.prod_keys = {}  # Stores system keys from prod.keys
+        self.title_keys = {} # Stores title-specific keys from title.keys
+        
+        # Flags indicating if keys are loaded
+        self.prod_keys_loaded = False
+        self.title_keys_loaded = False
     
-    def load_keys(self):
-        """Load encryption keys from the keys file
+    def load_prod_keys(self):
+        """Load production encryption keys
         
         Returns:
             True if keys were loaded successfully, False otherwise
         """
-        keys_path = Path(self.keys_path)
-        
-        if not keys_path.exists():
-            self.logger.error(f"Keys file not found: {keys_path}")
+        if not self.prod_keys_path.exists():
+            self.logger.error(f"Production keys file not found: {self.prod_keys_path}")
             # Create a default keys structure with empty keys
-            # This is for demonstration purposes only
-            self.keys = {
-                "header_key": b'\x00' * 32,
-                "key_area_key_application": b'\x00' * 16,
-                "key_area_key_ocean": b'\x00' * 16,
-                "titlekek_00": b'\x00' * 16,
-                "titlekek_01": b'\x00' * 16
-            }
-            self.logger.warning("Using empty placeholder keys (demo mode)")
-            self.keys_loaded = True
+            self._set_default_prod_keys()
+            self.logger.warning("Using empty placeholder production keys (demo mode)")
+            self.prod_keys_loaded = True
             return True
         
         try:
-            self.logger.info(f"Loading keys from: {keys_path}")
-            with open(keys_path, 'r') as f:
+            self.logger.info(f"Loading production keys from: {self.prod_keys_path}")
+            with open(self.prod_keys_path, 'r') as f:
                 lines = f.readlines()
             
             # Parse keys file (format: key_name = hex_value)
-            for line in lines:
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                
-                parts = line.split('=', 1)
-                if len(parts) != 2:
-                    continue
-                
-                key_name = parts[0].strip()
-                key_value = parts[1].strip()
-                
-                # Remove any 0x prefix and convert to bytes
-                if key_value.startswith('0x'):
-                    key_value = key_value[2:]
-                
-                try:
-                    key_bytes = bytes.fromhex(key_value)
-                    self.keys[key_name] = key_bytes
-                except ValueError:
-                    self.logger.warning(f"Invalid key format: {key_name}")
+            self._parse_key_file(lines, self.prod_keys)
             
             # Check if we have the required keys
-            required_keys = ["header_key", "key_area_key_application", "key_area_key_ocean", 
+            required_keys = ["header_key", "key_area_key_application_00", "key_area_key_ocean_00", 
                             "titlekek_00", "titlekek_01"]
             
-            missing_keys = [key for key in required_keys if key not in self.keys]
+            missing_keys = [key for key in required_keys if key not in self.prod_keys]
             if missing_keys:
-                self.logger.warning(f"Missing required keys: {', '.join(missing_keys)}")
+                self.logger.warning(f"Missing required production keys: {', '.join(missing_keys)}")
                 
                 # Create placeholder keys for missing ones (in demo mode)
-                for key in missing_keys:
-                    # Use appropriate key size based on key name
-                    if key == "header_key":
-                        self.keys[key] = b'\x00' * 32  # Header key is 32 bytes
-                    else:
-                        self.keys[key] = b'\x00' * 16  # Other keys are 16 bytes
-                
-                self.logger.warning("Using placeholder keys for missing keys (demo mode)")
+                self._add_missing_prod_keys(missing_keys)
             
-            self.keys_loaded = True
-            self.logger.info(f"Loaded {len(self.keys)} keys successfully")
+            self.prod_keys_loaded = True
+            self.logger.info(f"Loaded {len(self.prod_keys)} production keys successfully")
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to load keys: {e}", exc_info=True)
+            self.logger.error(f"Failed to load production keys: {e}", exc_info=True)
             return False
     
-    def get_key(self, key_name):
-        """Get a specific key by name
+    def load_title_keys(self):
+        """Load title-specific keys
+        
+        Returns:
+            True if keys were loaded successfully, False otherwise
+        """
+        if not self.title_keys_path.exists():
+            self.logger.warning(f"Title keys file not found: {self.title_keys_path}")
+            # Create an empty dictionary for title keys
+            self.title_keys = {}
+            self.logger.warning("No title keys available (demo mode)")
+            self.title_keys_loaded = True
+            return True
+        
+        try:
+            self.logger.info(f"Loading title keys from: {self.title_keys_path}")
+            with open(self.title_keys_path, 'r') as f:
+                lines = f.readlines()
+            
+            # Parse keys file (format: titleId = hex_value)
+            self._parse_key_file(lines, self.title_keys)
+            
+            self.title_keys_loaded = True
+            self.logger.info(f"Loaded {len(self.title_keys)} title keys successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load title keys: {e}", exc_info=True)
+            return False
+    
+    def load_keys(self):
+        """Load all encryption keys
+        
+        Returns:
+            True if keys were loaded successfully, False otherwise
+        """
+        prod_result = self.load_prod_keys()
+        title_result = self.load_title_keys()
+        
+        return prod_result and title_result
+    
+    def _parse_key_file(self, lines, keys_dict):
+        """Parse a key file with lines in format: key_name = hex_value
         
         Args:
-            key_name: Name of the key
+            lines: List of lines from the key file
+            keys_dict: Dictionary to store the parsed keys
+        """
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            parts = line.split('=', 1)
+            if len(parts) != 2:
+                continue
+            
+            key_name = parts[0].strip()
+            key_value = parts[1].strip()
+            
+            # Remove any 0x prefix and convert to bytes
+            if key_value.startswith('0x'):
+                key_value = key_value[2:]
+            
+            try:
+                key_bytes = bytes.fromhex(key_value)
+                keys_dict[key_name] = key_bytes
+            except ValueError:
+                self.logger.warning(f"Invalid key format: {key_name}")
+    
+    def _set_default_prod_keys(self):
+        """Set default empty production keys for demo mode"""
+        self.prod_keys = {
+            "header_key": b'\x00' * 32,
+            "key_area_key_application_00": b'\x00' * 16,
+            "key_area_key_ocean_00": b'\x00' * 16,
+            "titlekek_00": b'\x00' * 16,
+            "titlekek_01": b'\x00' * 16
+        }
+    
+    def _add_missing_prod_keys(self, missing_keys):
+        """Add missing production keys with placeholder values
+        
+        Args:
+            missing_keys: List of key names that are missing
+        """
+        for key in missing_keys:
+            # Use appropriate key size based on key name
+            if key == "header_key":
+                self.prod_keys[key] = b'\x00' * 32  # Header key is 32 bytes
+            else:
+                self.prod_keys[key] = b'\x00' * 16  # Other keys are 16 bytes
+        
+        self.logger.warning("Using placeholder keys for missing production keys (demo mode)")
+    
+    def get_prod_key(self, key_name):
+        """Get a specific production key by name
+        
+        Args:
+            key_name: Name of the production key
             
         Returns:
             Key bytes, or None if not found
         """
-        return self.keys.get(key_name)
+        return self.prod_keys.get(key_name)
+    
+    def get_title_key(self, title_id):
+        """Get a title key for a specific title ID
+        
+        Args:
+            title_id: Title ID (string or integer)
+            
+        Returns:
+            Title key bytes, or None if not found
+        """
+        # Convert title_id to string if it's not already
+        if not isinstance(title_id, str):
+            title_id = f"{title_id:016X}"
+        
+        return self.title_keys.get(title_id)
     
     def is_keys_loaded(self):
         """Check if keys are loaded
@@ -128,7 +227,19 @@ class KeysManager:
         Returns:
             True if keys are loaded, False otherwise
         """
-        return self.keys_loaded
+        return self.prod_keys_loaded and self.title_keys_loaded
+    
+    # Legacy compatibility method
+    def get_key(self, key_name):
+        """Get a specific key by name (for backwards compatibility)
+        
+        Args:
+            key_name: Name of the key
+            
+        Returns:
+            Key bytes, or None if not found
+        """
+        return self.get_prod_key(key_name)
 
 
 class RomLoader:
@@ -173,7 +284,7 @@ class RomLoader:
             if not self.keys_manager.load_keys():
                 self.logger.warning("Still couldn't load keys, using demo mode")
         
-        header_key = self.keys_manager.get_key("header_key")
+        header_key = self.keys_manager.get_prod_key("header_key")
         if not header_key:
             self.logger.warning("Header key not found, using demo mode")
             # Return the original data in demo mode
@@ -651,6 +762,51 @@ class RomLoader:
         rom_info["format"] = "XPI"
         
         return rom_info
+    
+    def _decrypt_content(self, encrypted_data, title_id):
+        """Decrypt content using a title key
+        
+        Args:
+            encrypted_data: Content to decrypt
+            title_id: Title ID for the content
+            
+        Returns:
+            Decrypted content data
+        """
+        # Ensure keys are loaded
+        if not self.keys_manager.is_keys_loaded():
+            self.logger.warning("Keys are not loaded, trying to load them now")
+            if not self.keys_manager.load_keys():
+                self.logger.warning("Still couldn't load keys, using demo mode")
+        
+        # Get the title key for this title ID
+        title_key = self.keys_manager.get_title_key(title_id)
+        if not title_key:
+            self.logger.warning(f"Title key not found for title ID: {title_id}, using demo mode")
+            # Return the original data in demo mode
+            return encrypted_data
+        
+        try:
+            # Create a cipher for CBC mode decryption
+            # For simplicity, we're using a zero IV; in reality, it would be derived from the title ID
+            iv = b'\x00' * 16
+            
+            cipher = Cipher(
+                algorithms.AES(title_key),
+                modes.CBC(iv),
+                backend=default_backend()
+            )
+            decryptor = cipher.decryptor()
+            
+            # Decrypt the content
+            decrypted_data = decryptor.update(encrypted_data) + decryptor.finalize()
+            
+            return decrypted_data
+            
+        except Exception as e:
+            self.logger.warning(f"Error decrypting content: {e}, using demo mode")
+            # In demo mode, just return the original data
+            return encrypted_data
     
     def load(self):
         """Load and decrypt the ROM file

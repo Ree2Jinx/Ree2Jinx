@@ -46,8 +46,8 @@ config.json
 
 # Emulator files
 *.rom
-*.key
-*.keys
+keys/*.key
+!keys/.gitkeep
 *.firmware
 *.state
 *.save

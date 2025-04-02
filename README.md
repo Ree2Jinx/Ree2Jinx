@@ -70,7 +70,7 @@ python main.py
 The following command-line options are available:
 
 - `--rom PATH`: Path to a ROM file to load
-- `--keys PATH`: Path to a keys file for ROM decryption
+- `--keys PATH`: Path to a keys directory/file for ROM decryption
 - `--firmware PATH`: Path to firmware directory containing .nca files
 - `--docked`: Start in docked mode instead of handheld mode
 - `--fullscreen`: Start in fullscreen mode
@@ -168,6 +168,7 @@ The "New Joycons" feature mouse input integration:
   - `window.py`: Main window and rendering
   - `gui.py`: UI utilities and file dialogs
 - `assets/`: Graphics and other assets
+- `keys/`: Dummy keys. (*Should* be replacable with Switch 2 keys.)
 
 ## Project Status
 

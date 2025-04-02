@@ -41,7 +41,7 @@ def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="ImaginaryConsole Emulator")
     parser.add_argument("--rom", type=str, help="Path to ROM file to load")
-    parser.add_argument("--keys", type=str, help="Path to keys file")
+    parser.add_argument("--keys", type=str, help="Path to keys directory containing prod.keys and title.keys")
     parser.add_argument("--firmware", type=str, help="Path to firmware directory")
     parser.add_argument("--docked", action="store_true", help="Start in docked mode instead of handheld mode")
     parser.add_argument("--fullscreen", action="store_true", help="Start in fullscreen mode")
