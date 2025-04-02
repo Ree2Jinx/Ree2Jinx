@@ -164,31 +164,62 @@ class System:
     def load_rom(self, rom_loader):
         """Load a ROM into the system memory"""
         try:
+            if not rom_loader or not hasattr(rom_loader, 'rom_path'):
+                self.logger.error("Invalid ROM loader")
+                return False
+                
             self.logger.info(f"Loading ROM: {rom_loader.rom_path}")
-            rom_data, rom_info = rom_loader.load()
             
+            # Check if paths exist
+            if not rom_loader.rom_path.exists():
+                self.logger.error(f"ROM file does not exist: {rom_loader.rom_path}")
+                return False
+                
+            if not rom_loader.keys_manager.keys_path.exists():
+                self.logger.error(f"Keys file does not exist: {rom_loader.keys_manager.keys_path}")
+                return False
+            
+            # Load the ROM
+            try:
+                rom_data, rom_info = rom_loader.load()
+            except Exception as e:
+                self.logger.error(f"Error in ROM loader: {e}", exc_info=True)
+                return False
+            
+            if not rom_data or len(rom_data) == 0:
+                self.logger.error("ROM data is empty")
+                return False
+                
             # Store ROM information
             self.rom_info = rom_info
             
             # Allocate memory for the ROM
-            rom_addr = self.memory.allocate(len(rom_data), name=f"ROM_{rom_info['title']}")
-            self.memory.write(rom_addr, rom_data)
-            self.memory_map['rom_base'] = rom_addr
+            try:
+                rom_addr = self.memory.allocate(len(rom_data), name=f"ROM_{rom_info['title']}")
+                self.memory.write(rom_addr, rom_data)
+                self.memory_map['rom_base'] = rom_addr
+            except Exception as e:
+                self.logger.error(f"Error allocating memory for ROM: {e}", exc_info=True)
+                return False
             
             # Store ROM address for CPU/GPU access
             if self.memory_map['boot_rom'] is None:
                 # If BIOS isn't loaded, directly start executing the ROM
                 self.cpu.set_program_counter(rom_addr)
             
-            # Initialize ROM-specific memory regions
-            self._init_rom_memory(rom_info)
+            try:
+                # Initialize ROM-specific memory regions
+                self._init_rom_memory(rom_info)
+            except Exception as e:
+                self.logger.error(f"Error initializing ROM memory regions: {e}", exc_info=True)
+                return False
             
             self.rom_loaded = True
             self.logger.info(f"ROM loaded successfully: {rom_info['title']} at 0x{rom_addr:08X}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to load ROM: {e}")
+            self.logger.error(f"Failed to load ROM: {e}", exc_info=True)
             return False
     
     def _init_rom_memory(self, rom_info):

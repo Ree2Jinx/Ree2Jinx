@@ -10,6 +10,7 @@ import sys
 import logging
 import argparse
 from pathlib import Path
+import pygame
 
 # Internal modules
 from config import Config
@@ -65,6 +66,10 @@ def main():
     
     # Initialize system components
     try:
+        # Set up Pygame to ignore key repeat events
+        pygame.init()
+        pygame.key.set_repeat(0)
+        
         # Setup firmware and keys
         firmware_manager = FirmwareManager(args.firmware or config.firmware_path)
         firmware_manager.load_firmware()

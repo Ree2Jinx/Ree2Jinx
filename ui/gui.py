@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import pygame
 import pygame.freetype
+import platform
 
 
 class FileDialog:
@@ -26,6 +27,75 @@ class FileDialog:
         Returns:
             Selected file path, or None if cancelled
         """
+        # Create a logger for this method
+        logger = logging.getLogger("ImaginaryConsole.FileDialog")
+        
+        # Check if we're on macOS
+        is_macos = platform.system() == 'Darwin'
+        
+        if is_macos:
+            try:
+                # On macOS, use subprocess to call AppleScript for native file dialog
+                # This avoids Tkinter-related crashes on macOS
+                import subprocess
+                
+                # Set up the initial directory
+                initial_dir_str = ""
+                if initial_dir:
+                    # Convert to absolute path and escape any quotes
+                    initial_dir = os.path.abspath(initial_dir)
+                    initial_dir = initial_dir.replace('"', '\\"')
+                    initial_dir_str = f'default location "{initial_dir}"'
+                
+                # Create file types string for AppleScript
+                file_type_str = ""
+                if filetypes:
+                    extensions = []
+                    for desc, exts in filetypes:
+                        if isinstance(exts, str):
+                            extensions.append(exts)
+                        else:
+                            extensions.extend(exts)
+                    # Remove duplicate extensions and dots
+                    extensions = [ext.lstrip('.') for ext in extensions]
+                    extensions = list(set(extensions))
+                    if extensions and extensions != ['.*']:
+                        file_type_str = f'of type {{"' + '", "'.join(extensions) + '"}} '
+                
+                # Cleaner AppleScript that handles errors better
+                apple_script = f'''
+                set theFile to ""
+                try
+                    tell application "System Events"
+                        activate
+                        set theFile to POSIX path of (choose file {initial_dir_str} {file_type_str}with prompt "{title}")
+                    end tell
+                    return theFile
+                on error errMsg
+                    return ""
+                end try
+                '''
+                
+                logger.debug(f"Running AppleScript dialog with options: {initial_dir_str} {file_type_str}")
+                
+                # Execute the AppleScript
+                result = subprocess.run(['osascript', '-e', apple_script], 
+                                        capture_output=True, text=True)
+                
+                output = result.stdout.strip()
+                if result.returncode == 0 and output:
+                    logger.debug(f"AppleScript returned: {output}")
+                    return output
+                else:
+                    logger.debug(f"AppleScript dialog canceled or failed: {result.stderr.strip()}")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Error showing macOS file dialog: {e}", exc_info=True)
+                # Fall back to alternative file dialog
+                logger.debug("Falling back to tkinter dialog")
+        
+        # For non-macOS platforms or if macOS method failed, use tkinter
         # Hide the pygame window temporarily
         pygame_display_mode = None
         try:
@@ -54,7 +124,7 @@ class FileDialog:
                 initialdir=initial_dir
             )
         except Exception as e:
-            logging.error(f"Error showing file dialog: {e}")
+            logger.error(f"Error showing file dialog: {e}")
             filepath = None
         
         # Destroy the root window
@@ -82,6 +152,68 @@ class FileDialog:
         Returns:
             Selected file path, or None if cancelled
         """
+        # Create a logger for this method
+        logger = logging.getLogger("ImaginaryConsole.FileDialog")
+        
+        # Check if we're on macOS
+        is_macos = platform.system() == 'Darwin'
+        
+        if is_macos:
+            try:
+                # On macOS, use subprocess to call AppleScript for native file dialog
+                # This avoids Tkinter-related crashes on macOS
+                import subprocess
+                
+                # Set up the initial directory
+                initial_dir_str = ""
+                if initial_dir:
+                    initial_dir_str = f'default location "{initial_dir}"'
+                
+                # Create file types string for AppleScript
+                file_type_str = ""
+                if filetypes:
+                    extensions = []
+                    for desc, exts in filetypes:
+                        if isinstance(exts, str):
+                            extensions.append(exts)
+                        else:
+                            extensions.extend(exts)
+                    # Remove duplicate extensions and dots
+                    extensions = [ext.lstrip('.') for ext in extensions]
+                    extensions = list(set(extensions))
+                    if extensions and extensions != ['.*']:
+                        file_type_str = f'of type {{"' + '", "'.join(extensions) + '"}} '
+                
+                # Construct the AppleScript command
+                apple_script = f'''
+                tell application "System Events"
+                    activate
+                    set filePath to choose file name {initial_dir_str}with prompt "{title}"
+                    set filePath to POSIX path of filePath
+                end tell
+                '''
+                
+                # Execute the AppleScript
+                result = subprocess.run(['osascript', '-e', apple_script], 
+                                        capture_output=True, text=True)
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    filepath = result.stdout.strip()
+                    
+                    # Add default extension if provided and not already present
+                    if default_ext and not filepath.lower().endswith(default_ext.lower()):
+                        filepath += default_ext
+                        
+                    return filepath
+                else:
+                    logger.debug(f"AppleScript dialog canceled or failed")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Error showing macOS file dialog: {e}")
+                # Fall back to alternative file dialog
+        
+        # For non-macOS platforms or if macOS method failed, use tkinter
         # Hide the pygame window temporarily
         pygame_display_mode = None
         try:
@@ -111,7 +243,7 @@ class FileDialog:
                 defaultextension=default_ext
             )
         except Exception as e:
-            logging.error(f"Error showing file dialog: {e}")
+            logger.error(f"Error showing file dialog: {e}")
             filepath = None
         
         # Destroy the root window
@@ -137,6 +269,47 @@ class FileDialog:
         Returns:
             Selected directory path, or None if cancelled
         """
+        # Create a logger for this method
+        logger = logging.getLogger("ImaginaryConsole.FileDialog")
+        
+        # Check if we're on macOS
+        is_macos = platform.system() == 'Darwin'
+        
+        if is_macos:
+            try:
+                # On macOS, use subprocess to call AppleScript for native file dialog
+                # This avoids Tkinter-related crashes on macOS
+                import subprocess
+                
+                # Set up the initial directory
+                initial_dir_str = ""
+                if initial_dir:
+                    initial_dir_str = f'default location "{initial_dir}"'
+                
+                # Construct the AppleScript command
+                apple_script = f'''
+                tell application "System Events"
+                    activate
+                    set folderPath to choose folder {initial_dir_str}with prompt "{title}"
+                    set folderPath to POSIX path of folderPath
+                end tell
+                '''
+                
+                # Execute the AppleScript
+                result = subprocess.run(['osascript', '-e', apple_script], 
+                                        capture_output=True, text=True)
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    return result.stdout.strip()
+                else:
+                    logger.debug(f"AppleScript dialog canceled or failed")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Error showing macOS folder dialog: {e}")
+                # Fall back to alternative file dialog
+        
+        # For non-macOS platforms or if macOS method failed, use tkinter
         # Hide the pygame window temporarily
         pygame_display_mode = None
         try:
@@ -156,7 +329,7 @@ class FileDialog:
                 initialdir=initial_dir
             )
         except Exception as e:
-            logging.error(f"Error showing directory dialog: {e}")
+            logger.error(f"Error showing directory dialog: {e}")
             dirpath = None
         
         # Destroy the root window
