@@ -127,10 +127,10 @@ class System:
         self.logger.info(f"Hardware frequencies updated for {'docked' if self.config.docked_mode else 'handheld'} mode")
     
     def load_bios(self, firmware_manager):
-        """Load system BIOS and boot code
+        """Load system BIOS and boot code from NCA firmware files
         
         Args:
-            firmware_manager: Firmware manager containing the firmware files
+            firmware_manager: Firmware manager containing the NCA firmware files
             
         Returns:
             True if BIOS was loaded, False otherwise
@@ -140,21 +140,34 @@ class System:
             return False
         
         try:
-            # Load BOOT0 (primary BIOS)
-            boot0_data = firmware_manager.get_firmware_data("BOOT0")
-            if not boot0_data:
-                self.logger.error("BOOT0 firmware not found")
+            # Get PROGRAM NCA (primary boot code)
+            program_nca_ids = firmware_manager.get_nca_by_type("PROGRAM")
+            if not program_nca_ids:
+                self.logger.error("PROGRAM NCA firmware not found")
+                return False
+            
+            # Get program data from the first PROGRAM NCA
+            program_data = firmware_manager.get_nca_data(program_nca_ids[0])
+            if not program_data:
+                self.logger.error("Failed to load PROGRAM NCA data")
                 return False
             
             # Allocate memory for BIOS and load it
-            boot0_addr = self.memory.allocate(len(boot0_data), name="BOOT0")
-            self.memory.write(boot0_addr, boot0_data)
-            self.memory_map['boot_rom'] = boot0_addr
+            bios_addr = self.memory.allocate(len(program_data), name="BIOS_PROGRAM")
+            self.memory.write(bios_addr, program_data)
+            self.memory_map['boot_rom'] = bios_addr
             
             # Set CPU to start executing from BIOS
-            self.cpu.set_program_counter(boot0_addr)
+            self.cpu.set_program_counter(bios_addr)
             
-            self.logger.info(f"BIOS loaded successfully at 0x{boot0_addr:08X}")
+            # For backward compatibility
+            if hasattr(firmware_manager, "get_firmware_data"):
+                # Try loading legacy format via compatibility method
+                legacy_data = firmware_manager.get_firmware_data("BOOT0")
+                if legacy_data:
+                    self.logger.info("Legacy BOOT0 data accessed via compatibility layer")
+            
+            self.logger.info(f"BIOS loaded successfully from NCA at 0x{bios_addr:08X}")
             return True
             
         except Exception as e:

@@ -19,20 +19,24 @@ class FirmwareError(Exception):
 class FirmwareManager:
     """Manages firmware loading and verification for the emulator"""
     
-    # Firmware file structure - based on similar console formats
-    FIRMWARE_FILES = {
-        "BOOT0": {"required": True, "size_range": (4*1024*1024, 8*1024*1024)},
-        "BOOT1": {"required": True, "size_range": (1*1024*1024, 4*1024*1024)},
-        "BCPKG2": {"required": True, "size_range": (8*1024*1024, 32*1024*1024)},
-        "SAFE_MODE": {"required": False, "size_range": (1*1024*1024, 4*1024*1024)},
-        "SYSTEM_VERSION": {"required": True, "size_range": (1024, 32*1024)}
+    # NCA types and their properties
+    NCA_TYPES = {
+        # Each NCA type with its properties
+        "PROGRAM": {"required": True, "size_range": (4*1024*1024, 64*1024*1024)},
+        "CONTROL": {"required": True, "size_range": (1*1024*1024, 8*1024*1024)},
+        "DATA": {"required": True, "size_range": (1*1024*1024, 32*1024*1024)},
+        "META": {"required": True, "size_range": (1*1024, 1*1024*1024)},
+        "PUBLIC_DATA": {"required": False, "size_range": (1*1024, 8*1024*1024)},
     }
+    
+    # NCA magic header
+    NCA_MAGIC = b'NCA\x00'
     
     def __init__(self, firmware_path):
         """Initialize the firmware manager
         
         Args:
-            firmware_path: Path to the firmware directory
+            firmware_path: Path to the firmware directory containing .nca files
         """
         self.logger = logging.getLogger("ImaginaryConsole.FirmwareManager")
         self.firmware_path = Path(firmware_path)
@@ -45,155 +49,226 @@ class FirmwareManager:
         self.firmware_info = {}
         self.firmware_version = None
         self.firmware_data = {}
+        self.nca_files = {}
         
         self.logger.info(f"Firmware manager initialized with path: {self.firmware_path}")
     
-    def verify_firmware_file(self, filename, data):
-        """Verify a firmware file's integrity
+    def verify_firmware_file(self, filepath, data):
+        """Verify an NCA firmware file's integrity
         
         Args:
-            filename: Name of the firmware file
+            filepath: Path to the NCA file
             data: Binary content of the file
             
         Returns:
-            True if the file is valid, False otherwise
+            Tuple of (nca_type, is_valid) where nca_type is the determined type and is_valid is a boolean
         """
-        # Check if this is a known firmware file
-        if filename not in self.FIRMWARE_FILES:
-            self.logger.warning(f"Unknown firmware file: {filename}")
-            return False
+        # Check file size - general minimum
+        if len(data) < 1*1024*1024:  # Less than 1MB is likely invalid
+            self.logger.error(f"NCA file {filepath.name} is too small: {len(data)} bytes")
+            return None, False
         
-        file_spec = self.FIRMWARE_FILES[filename]
+        # Check NCA magic in header
+        if data[:4] != self.NCA_MAGIC:
+            self.logger.error(f"NCA file {filepath.name} has invalid magic: {data[:4]}")
+            return None, False
         
-        # Check file size
-        min_size, max_size = file_spec["size_range"]
-        if len(data) < min_size or len(data) > max_size:
-            self.logger.error(f"Firmware file {filename} has invalid size: {len(data)} bytes "
-                              f"(expected {min_size} to {max_size} bytes)")
-            return False
-        
-        # Check file magic - specific to each firmware file type
-        if filename == "BOOT0":
-            # First 4 bytes should be a specific magic number
-            magic = struct.unpack("<I", data[:4])[0]
-            if magic != 0x43534642:  # 'BFSC' in little-endian
-                self.logger.error(f"Firmware file {filename} has invalid magic: 0x{magic:08X}")
-                return False
-        
-        elif filename == "BOOT1":
-            # First 4 bytes should be a specific magic number
-            magic = struct.unpack("<I", data[:4])[0]
-            if magic != 0x30544F42:  # 'BOT0' in little-endian
-                self.logger.error(f"Firmware file {filename} has invalid magic: 0x{magic:08X}")
-                return False
-        
-        # Additional validation could be implemented for other firmware files
-        
-        return True
+        # Extract content type from NCA header (simplified - real implementation would parse the full header)
+        # In a real implementation, we'd parse the proper NCA header structure
+        try:
+            # Content type is typically at offset 0x0C in the NCA header
+            content_type = data[0x0C]
+            
+            # Map content type to NCA type string
+            if content_type == 0:
+                nca_type = "PROGRAM"
+            elif content_type == 1:
+                nca_type = "META"
+            elif content_type == 2:
+                nca_type = "CONTROL"
+            elif content_type == 3:
+                nca_type = "DATA"
+            elif content_type == 4:
+                nca_type = "PUBLIC_DATA"
+            else:
+                self.logger.warning(f"Unknown NCA content type: {content_type} in {filepath.name}")
+                nca_type = "UNKNOWN"
+                
+            # Verify size range if this is a known type
+            if nca_type in self.NCA_TYPES:
+                type_spec = self.NCA_TYPES[nca_type]
+                min_size, max_size = type_spec["size_range"]
+                
+                if len(data) < min_size or len(data) > max_size:
+                    self.logger.warning(f"NCA file {filepath.name} of type {nca_type} has unusual size: {len(data)} bytes "
+                                      f"(expected {min_size} to {max_size} bytes)")
+                    # Continue anyway as size ranges are approximate
+            
+            return nca_type, True
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing NCA header for {filepath.name}: {e}")
+            return None, False
     
     def load_firmware_file(self, filepath):
-        """Load a firmware file from the given path
+        """Load an NCA firmware file from the given path
         
         Args:
-            filepath: Path to the firmware file
+            filepath: Path to the NCA firmware file
             
         Returns:
-            Tuple of (filename, data) if successful, (None, None) otherwise
+            Tuple of (nca_id, nca_type, data) if successful, (None, None, None) otherwise
         """
         try:
-            # Extract the base filename
-            filename = os.path.basename(filepath)
+            # Generate a unique ID for this NCA file
+            nca_id = filepath.stem
             
             # Read the file
             with open(filepath, 'rb') as f:
                 data = f.read()
             
-            # Verify the file
-            if self.verify_firmware_file(filename, data):
-                self.logger.debug(f"Loaded firmware file: {filename} ({len(data)} bytes)")
-                return filename, data
+            # Verify the file and determine its type
+            nca_type, valid = self.verify_firmware_file(filepath, data)
+            
+            if valid:
+                self.logger.debug(f"Loaded NCA firmware file: {filepath.name} ({len(data)} bytes), type: {nca_type}")
+                return nca_id, nca_type, data
             else:
-                self.logger.warning(f"Invalid firmware file: {filepath}")
-                return None, None
+                self.logger.warning(f"Invalid NCA firmware file: {filepath}")
+                return None, None, None
             
         except Exception as e:
-            self.logger.error(f"Failed to load firmware file {filepath}: {e}")
-            return None, None
+            self.logger.error(f"Failed to load NCA firmware file {filepath}: {e}")
+            return None, None, None
     
     def load_firmware(self):
-        """Load and verify all firmware files from the firmware directory
+        """Load and verify all NCA firmware files from the firmware directory
         
         Returns:
-            True if all required firmware files were loaded successfully, False otherwise
+            True if all required NCA types were loaded successfully, False otherwise
         """
         self.firmware_loaded = False
         self.firmware_data = {}
         self.firmware_info = {}
+        self.nca_files = {}
         
-        # Find all firmware files
-        firmware_files = {}
-        for filename in self.FIRMWARE_FILES:
-            filepath = self.firmware_path / filename
-            if filepath.exists():
-                firmware_files[filename] = str(filepath)
+        # Find all .nca files in the firmware directory
+        nca_files = list(self.firmware_path.glob("*.nca"))
         
-        # Check for missing required files
-        missing_files = []
-        for filename, file_spec in self.FIRMWARE_FILES.items():
-            if file_spec["required"] and filename not in firmware_files:
-                missing_files.append(filename)
-        
-        if missing_files:
-            missing_list = ", ".join(missing_files)
-            self.logger.error(f"Missing required firmware files: {missing_list}")
+        if not nca_files:
+            self.logger.error(f"No .nca files found in firmware directory: {self.firmware_path}")
             return False
         
-        # Load all available firmware files
-        for filename, filepath in firmware_files.items():
-            name, data = self.load_firmware_file(filepath)
-            if name and data:
-                self.firmware_data[name] = data
+        self.logger.info(f"Found {len(nca_files)} .nca files in firmware directory")
         
-        # Check if we have all required files
-        for filename, file_spec in self.FIRMWARE_FILES.items():
-            if file_spec["required"] and filename not in self.firmware_data:
-                self.logger.error(f"Required firmware file failed to load: {filename}")
-                return False
+        # Load all available NCA files
+        loaded_types = set()
+        for filepath in nca_files:
+            nca_id, nca_type, data = self.load_firmware_file(filepath)
+            if nca_id and nca_type and data:
+                # Store the NCA file data
+                self.nca_files[nca_id] = {
+                    "type": nca_type,
+                    "data": data,
+                    "path": str(filepath),
+                    "size": len(data)
+                }
+                
+                # Keep track of loaded NCA types
+                loaded_types.add(nca_type)
         
-        # Parse firmware version from SYSTEM_VERSION file
-        if "SYSTEM_VERSION" in self.firmware_data:
+        # Check if we have all required NCA types
+        missing_types = []
+        for nca_type, type_spec in self.NCA_TYPES.items():
+            if type_spec["required"] and nca_type not in loaded_types:
+                missing_types.append(nca_type)
+        
+        if missing_types:
+            missing_list = ", ".join(missing_types)
+            self.logger.error(f"Missing required NCA firmware types: {missing_list}")
+            return False
+        
+        # Extract firmware version from META NCA if available
+        meta_ncas = [nca for nca in self.nca_files.values() if nca["type"] == "META"]
+        if meta_ncas:
+            # In a real implementation, we'd parse the META NCA properly to extract version
+            # This is a simplified version for demonstration purposes
             try:
-                version_data = self.firmware_data["SYSTEM_VERSION"]
-                self.firmware_version = version_data.decode('utf-8').strip()
+                meta_data = meta_ncas[0]["data"]
+                # Assume version string is stored at a specific offset in the META NCA
+                version_offset = 0x100  # This would be different in a real implementation
+                version_length = 32
+                version_bytes = meta_data[version_offset:version_offset+version_length]
+                
+                # Extract null-terminated string
+                null_pos = version_bytes.find(b'\x00')
+                if null_pos > 0:
+                    version_bytes = version_bytes[:null_pos]
+                
+                self.firmware_version = version_bytes.decode('utf-8', errors='ignore').strip()
                 self.firmware_info["version"] = self.firmware_version
                 self.logger.info(f"Firmware version: {self.firmware_version}")
             except Exception as e:
-                self.logger.warning(f"Failed to parse firmware version: {e}")
+                self.logger.warning(f"Failed to parse firmware version from META NCA: {e}")
         
         # Add file checksums to firmware info
         checksums = {}
-        for filename, data in self.firmware_data.items():
-            checksums[filename] = hashlib.sha256(data).hexdigest()
+        nca_info = {}
+        for nca_id, nca in self.nca_files.items():
+            checksums[nca_id] = hashlib.sha256(nca["data"]).hexdigest()
+            nca_info[nca_id] = {
+                "type": nca["type"],
+                "size": nca["size"],
+                "path": nca["path"]
+            }
+        
         self.firmware_info["checksums"] = checksums
+        self.firmware_info["nca_files"] = nca_info
         
         # Save firmware info
         self._save_firmware_info()
         
         self.firmware_loaded = True
-        self.logger.info(f"Firmware loaded successfully: {len(self.firmware_data)} files")
+        self.logger.info(f"Firmware loaded successfully: {len(self.nca_files)} NCA files")
         return True
     
     def _save_firmware_info(self):
         """Save firmware information to a JSON file"""
         info_path = self.firmware_path / "firmware_info.json"
         try:
+            # Copy only serializable data (remove actual binary data)
+            serializable_info = {k: v for k, v in self.firmware_info.items()}
+            
             with open(info_path, 'w') as f:
-                json.dump(self.firmware_info, f, indent=4)
+                json.dump(serializable_info, f, indent=4)
         except Exception as e:
             self.logger.warning(f"Failed to save firmware info: {e}")
     
+    def get_nca_data(self, nca_id):
+        """Get the data for a specific NCA file by ID
+        
+        Args:
+            nca_id: ID of the NCA file
+            
+        Returns:
+            Binary data of the NCA file, or None if not found
+        """
+        nca = self.nca_files.get(nca_id)
+        return nca["data"] if nca else None
+    
+    def get_nca_by_type(self, nca_type):
+        """Get NCA files of a specific type
+        
+        Args:
+            nca_type: Type of NCA to retrieve
+            
+        Returns:
+            List of NCA IDs matching the requested type
+        """
+        return [nca_id for nca_id, nca in self.nca_files.items() if nca["type"] == nca_type]
+    
     def get_firmware_data(self, filename):
-        """Get the data for a specific firmware file
+        """Get the data for a specific firmware file (legacy method for compatibility)
         
         Args:
             filename: Name of the firmware file
@@ -201,7 +276,21 @@ class FirmwareManager:
         Returns:
             Binary data of the firmware file, or None if not found
         """
-        return self.firmware_data.get(filename)
+        # Map legacy firmware filenames to NCA types for backward compatibility
+        legacy_map = {
+            "BOOT0": "PROGRAM",
+            "BOOT1": "CONTROL",
+            "BCPKG2": "DATA",
+            "SYSTEM_VERSION": "META"
+        }
+        
+        if filename in legacy_map:
+            nca_type = legacy_map[filename]
+            nca_ids = self.get_nca_by_type(nca_type)
+            if nca_ids:
+                return self.get_nca_data(nca_ids[0])
+        
+        return None
     
     def get_firmware_version(self):
         """Get the firmware version string

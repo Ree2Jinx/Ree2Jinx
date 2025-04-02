@@ -52,6 +52,7 @@ config.json
 *.state
 *.save
 *.sav
+*.nca
 
 # Local test files
 test_roms/
