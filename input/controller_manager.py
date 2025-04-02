@@ -291,6 +291,8 @@ class ControllerManager:
         ACCEL_X = 7
         ACCEL_Y = 8
         ACCEL_Z = 9
+        ZL = 10  # Left Trigger axis
+        ZR = 11  # Right Trigger axis
     
     def __init__(self, config):
         """Initialize the controller manager
@@ -628,21 +630,6 @@ class ControllerManager:
             controller.profile = self.get_default_profile(ControllerType.MOUSE)
             self.controllers["direct_mouse"] = controller
     
-    def start_polling(self):
-        """Start the controller polling thread"""
-        if self.polling_thread is None or not self.polling_thread.is_alive():
-            self.stop_event.clear()
-            self.polling_thread = threading.Thread(target=self._polling_thread, daemon=True)
-            self.polling_thread.start()
-            self.logger.debug("Controller polling thread started")
-    
-    def stop_polling(self):
-        """Stop the controller polling thread"""
-        if self.polling_thread and self.polling_thread.is_alive():
-            self.stop_event.set()
-            self.polling_thread.join(timeout=1.0)
-            self.logger.debug("Controller polling thread stopped")
-    
     def _polling_thread(self):
         """Background thread for polling controller inputs"""
         while not self.stop_event.is_set():
@@ -659,7 +646,7 @@ class ControllerManager:
     
     def update(self):
         """Update the state of all controllers"""
-        # Process pygame events
+        # Process pygame events - on macOS, this must be called from the main thread
         for event in pygame.event.get():
             if event.type == pygame.JOYDEVICEADDED or event.type == pygame.JOYDEVICEREMOVED:
                 self.scan_controllers()
@@ -1099,4 +1086,30 @@ class ControllerManager:
             if abs(value) > abs(max_value):
                 max_value = value
         
-        return max_value 
+        return max_value
+
+    def start_polling(self):
+        """Start the controller polling thread
+        
+        Note: On macOS, this should not be used. Instead, call update() directly from the main thread.
+        """
+        # Check if we're running on macOS
+        import platform
+        if platform.system() == 'Darwin':
+            self.logger.warning("Controller background polling not supported on macOS. Call update() directly from main thread.")
+            return False
+            
+        if self.polling_thread is None or not self.polling_thread.is_alive():
+            self.stop_event.clear()
+            self.polling_thread = threading.Thread(target=self._polling_thread, daemon=True)
+            self.polling_thread.start()
+            self.logger.debug("Controller polling thread started")
+            return True
+        return False
+        
+    def stop_polling(self):
+        """Stop the controller polling thread"""
+        if self.polling_thread and self.polling_thread.is_alive():
+            self.stop_event.set()
+            self.polling_thread.join(timeout=1.0)
+            self.logger.debug("Controller polling thread stopped") 

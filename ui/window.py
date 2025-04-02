@@ -10,6 +10,7 @@ import pygame
 import OpenGL.GL as gl
 from pathlib import Path
 import numpy as np
+import platform
 
 from ui.gui import FileDialog, MessageDialog, MouseSettingsPanel
 
@@ -523,9 +524,14 @@ class Window:
         self.running = True
         self.frame_time = time.time()
         
-        # Start controller polling if input manager is available
+        # Start controller polling if input manager is available and we're not on macOS
+        is_macos = platform.system() == 'Darwin'
+        
         if self.input_manager:
-            self.input_manager.start_polling()
+            # On macOS, we'll call update() directly in the main loop
+            # instead of using a background thread
+            if not is_macos:
+                self.input_manager.start_polling()
         
         try:
             while self.running:
@@ -533,6 +539,10 @@ class Window:
                 self.running = self.handle_events()
                 if not self.running:
                     break
+                
+                # On macOS, manually update the controller state in the main thread
+                if is_macos and self.input_manager:
+                    self.input_manager.update()
                 
                 # Update state
                 self.update(system)
@@ -548,7 +558,7 @@ class Window:
         
         finally:
             # Stop controller polling
-            if self.input_manager:
+            if self.input_manager and not is_macos:
                 self.input_manager.stop_polling()
             
             # Clean up pygame

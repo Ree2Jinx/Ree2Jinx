@@ -54,6 +54,18 @@ class System:
         self.cpu.set_memory(self.memory)
         self.gpu.set_memory(self.memory)
         
+        # System memory map
+        self.memory_map = {
+            'boot_rom': None,
+            'ram_start': 0x10000,  # Start of regular RAM
+            'mmio_start': 0xE0000000,  # Start of memory-mapped I/O
+            'gpu_registers': 0xE0100000,
+            'audio_registers': 0xE0200000,
+            'usb_registers': 0xE0300000,
+            'system_registers': 0xE0400000,
+            'rom_base': None
+        }
+        
         # Allocate GPU memory regions in system memory
         self._allocate_gpu_memory()
         
@@ -66,18 +78,6 @@ class System:
         
         self.rom_loaded = False
         self.rom_info = None
-        
-        # System memory map
-        self.memory_map = {
-            'boot_rom': None,
-            'ram_start': 0x10000,  # Start of regular RAM
-            'mmio_start': 0xE0000000,  # Start of memory-mapped I/O
-            'gpu_registers': 0xE0100000,
-            'audio_registers': 0xE0200000,
-            'usb_registers': 0xE0300000,
-            'system_registers': 0xE0400000,
-            'rom_base': None
-        }
         
         self.logger.info("Hardware system initialized")
     
