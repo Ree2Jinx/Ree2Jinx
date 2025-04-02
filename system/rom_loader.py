@@ -134,8 +134,12 @@ class KeysManager:
 class RomLoader:
     """Loads and decrypts game ROMs"""
     
-    # ROM header magic value
+    # ROM header magic values for different formats
     NCA_MAGIC = b'NCA\x00'
+    NRO_MAGIC = b'NRO0'
+    NSO_MAGIC = b'NSO0'
+    NSP_MAGIC = b'PFS0'
+    XPI_MAGIC = b'XPI0'
     
     def __init__(self, rom_path, keys_path):
         """Initialize the ROM loader
@@ -150,9 +154,12 @@ class RomLoader:
         
         # ROM info
         self.rom_info = {}
+        
+        # ROM format
+        self.rom_format = None
     
     def _decrypt_header(self, header_data):
-        """Decrypt the NCA header
+        """Decrypt the NCA/NSP header
         
         Args:
             header_data: Encrypted header data
@@ -193,7 +200,7 @@ class RomLoader:
             return header_data
     
     def _parse_header(self, header_data):
-        """Parse the NCA header to extract ROM information
+        """Parse the ROM header to extract ROM information
         
         Args:
             header_data: Decrypted header data
@@ -204,14 +211,31 @@ class RomLoader:
         rom_info = {}
         
         try:
-            # Check magic
+            # Check magic to determine format
             magic = header_data[:4]
             rom_info["magic"] = magic.decode('utf-8', errors='ignore')
             
-            if magic != self.NCA_MAGIC:
-                self.logger.warning(f"Invalid NCA magic: {magic}, assuming demo ROM")
+            # Identify ROM format
+            if magic == self.NCA_MAGIC:
+                self.rom_format = "NCA"
+                return self._parse_nca_header(header_data, rom_info)
+            elif magic == self.NRO_MAGIC:
+                self.rom_format = "NRO"
+                return self._parse_nro_header(header_data, rom_info)
+            elif magic == self.NSO_MAGIC:
+                self.rom_format = "NSO"
+                return self._parse_nso_header(header_data, rom_info)
+            elif magic == self.NSP_MAGIC:
+                self.rom_format = "NSP"
+                return self._parse_nsp_header(header_data, rom_info)
+            elif magic == self.XPI_MAGIC:
+                self.rom_format = "XPI"
+                return self._parse_xpi_header(header_data, rom_info)
+            else:
+                self.logger.warning(f"Unknown ROM format with magic: {magic}, assuming demo ROM")
+                self.rom_format = "UNKNOWN"
                 
-                # Since this is a demo/emulator, we'll proceed anyway with default values
+                # Default ROM info for unknown format
                 rom_info.update({
                     "content_type": 0,
                     "crypto_type": 0,
@@ -221,33 +245,10 @@ class RomLoader:
                     "sdk_version": 0x00000000,
                     "section_count": 1
                 })
-            else:
-                # Valid NCA header, extract information
-                try:
-                    rom_info.update({
-                        "content_type": header_data[0x10] & 0x7,
-                        "crypto_type": header_data[0x11] & 0x7,
-                        "key_index": (header_data[0x11] >> 4) & 0xF,
-                        "size": struct.unpack("<Q", header_data[0x18:0x20])[0],
-                        "title_id": struct.unpack("<Q", header_data[0x20:0x28])[0],
-                        "sdk_version": struct.unpack("<I", header_data[0x28:0x2C])[0],
-                        "section_count": header_data[0x2C]
-                    })
-                except (IndexError, struct.error) as e:
-                    self.logger.warning(f"Error parsing header fields: {e}, using defaults")
-                    rom_info.update({
-                        "content_type": 0,
-                        "crypto_type": 0,
-                        "key_index": 0,
-                        "size": len(header_data),
-                        "title_id": 0x0123456789ABCDEF,
-                        "sdk_version": 0x00000000,
-                        "section_count": 1
-                    })
         except Exception as e:
             self.logger.warning(f"Error processing header: {e}, using defaults")
             rom_info.update({
-                "magic": "NCA?",
+                "magic": "UNK?",
                 "content_type": 0,
                 "crypto_type": 0,
                 "key_index": 0,
@@ -260,9 +261,394 @@ class RomLoader:
         # Set title based on filename
         rom_info["title"] = self.rom_path.stem
         
-        # Add demo/placeholder indication if this is not a valid NCA
-        if "magic" in rom_info and rom_info["magic"] != "NCA\x00":
+        # Add demo/placeholder indication if this is not a recognized format
+        if "magic" in rom_info and rom_info["magic"] not in ["NCA\x00", "NRO0", "NSO0", "PFS0", "XPI0"]:
             rom_info["title"] = f"{rom_info['title']} (Demo)"
+        
+        return rom_info
+    
+    def _parse_nca_header(self, header_data, rom_info):
+        """Parse NCA format header
+        
+        Args:
+            header_data: Header data
+            rom_info: ROM info dictionary to update
+            
+        Returns:
+            Updated ROM info dictionary
+        """
+        try:
+            # Parse NCA-specific fields
+            rom_info.update({
+                "content_type": header_data[0x10] & 0x7,
+                "crypto_type": header_data[0x11] & 0x7,
+                "key_index": (header_data[0x11] >> 4) & 0xF,
+                "size": struct.unpack("<Q", header_data[0x18:0x20])[0],
+                "title_id": struct.unpack("<Q", header_data[0x20:0x28])[0],
+                "sdk_version": struct.unpack("<I", header_data[0x28:0x2C])[0],
+                "section_count": header_data[0x2C]
+            })
+        except (IndexError, struct.error) as e:
+            self.logger.warning(f"Error parsing NCA header fields: {e}, using defaults")
+            rom_info.update({
+                "content_type": 0,
+                "crypto_type": 0,
+                "key_index": 0,
+                "size": len(header_data),
+                "title_id": 0x0123456789ABCDEF,
+                "sdk_version": 0x00000000,
+                "section_count": 1
+            })
+        
+        # Set title based on filename
+        rom_info["title"] = self.rom_path.stem
+        rom_info["format"] = "NCA"
+        
+        return rom_info
+    
+    def _parse_nro_header(self, header_data, rom_info):
+        """Parse NRO format header
+        
+        Args:
+            header_data: Header data
+            rom_info: ROM info dictionary to update
+            
+        Returns:
+            Updated ROM info dictionary
+        """
+        try:
+            # NRO header structure
+            # 0x00-0x03: Magic "NRO0"
+            # 0x04-0x07: Version
+            # 0x08-0x0F: Reserved 
+            # 0x10-0x13: Size of .text segment
+            # 0x14-0x17: Size of .ro segment
+            # 0x18-0x1B: Size of .data segment
+            # 0x1C-0x1F: Size of .bss segment
+            # ... (more fields follow)
+            
+            rom_info.update({
+                "version": struct.unpack("<I", header_data[0x04:0x08])[0],
+                "text_size": struct.unpack("<I", header_data[0x10:0x14])[0],
+                "ro_size": struct.unpack("<I", header_data[0x14:0x18])[0],
+                "data_size": struct.unpack("<I", header_data[0x18:0x1C])[0],
+                "bss_size": struct.unpack("<I", header_data[0x1C:0x20])[0],
+                "size": os.path.getsize(self.rom_path),
+                "title_id": 0,  # NRO doesn't have title ID in header
+                "sdk_version": 0,  # Placeholder
+            })
+            
+            # Try to extract program ID if asset section exists
+            if len(header_data) >= 0x40:
+                # Parse asset section offset if available (at 0x38)
+                asset_offset = struct.unpack("<I", header_data[0x38:0x3C])[0]
+                if asset_offset > 0 and asset_offset + 0x18 <= len(header_data):
+                    # Check if there's a valid ASET header at the offset
+                    aset_magic = header_data[asset_offset:asset_offset+4]
+                    if aset_magic == b'ASET':
+                        # Extract program ID from asset section
+                        prog_id_offset = asset_offset + 0x10
+                        if prog_id_offset + 8 <= len(header_data):
+                            rom_info["title_id"] = struct.unpack("<Q", header_data[prog_id_offset:prog_id_offset+8])[0]
+            
+        except (IndexError, struct.error) as e:
+            self.logger.warning(f"Error parsing NRO header fields: {e}, using defaults")
+            rom_info.update({
+                "version": 0,
+                "text_size": 0,
+                "ro_size": 0, 
+                "data_size": 0,
+                "bss_size": 0,
+                "size": os.path.getsize(self.rom_path),
+                "title_id": 0,
+                "sdk_version": 0
+            })
+        
+        # Set title based on filename
+        rom_info["title"] = self.rom_path.stem
+        rom_info["format"] = "NRO"
+        
+        return rom_info
+    
+    def _parse_nso_header(self, header_data, rom_info):
+        """Parse NSO format header
+        
+        Args:
+            header_data: Header data
+            rom_info: ROM info dictionary to update
+            
+        Returns:
+            Updated ROM info dictionary
+        """
+        try:
+            # NSO header structure
+            # 0x00-0x03: Magic "NSO0"
+            # 0x04-0x07: Version
+            # 0x08: Flags
+            # 0x0C-0x0F: .text file offset
+            # 0x10-0x13: .text memory offset
+            # 0x14-0x17: .text section size
+            # ... (similar for .rodata and .data sections)
+            
+            rom_info.update({
+                "version": struct.unpack("<I", header_data[0x04:0x08])[0],
+                "flags": header_data[0x08],
+                "text_offset": struct.unpack("<I", header_data[0x0C:0x10])[0],
+                "text_address": struct.unpack("<I", header_data[0x10:0x14])[0],
+                "text_size": struct.unpack("<I", header_data[0x14:0x18])[0],
+                "ro_offset": struct.unpack("<I", header_data[0x18:0x1C])[0], 
+                "ro_address": struct.unpack("<I", header_data[0x1C:0x20])[0],
+                "ro_size": struct.unpack("<I", header_data[0x20:0x24])[0],
+                "data_offset": struct.unpack("<I", header_data[0x24:0x28])[0],
+                "data_address": struct.unpack("<I", header_data[0x28:0x2C])[0],
+                "data_size": struct.unpack("<I", header_data[0x2C:0x30])[0], 
+                "bss_size": struct.unpack("<I", header_data[0x38:0x3C])[0],
+                "size": os.path.getsize(self.rom_path),
+                "title_id": 0,  # NSO doesn't contain title ID
+                "sdk_version": 0  # Placeholder
+            })
+            
+            # Check for compression flags
+            rom_info["text_compressed"] = bool(rom_info["flags"] & 0x01)
+            rom_info["ro_compressed"] = bool(rom_info["flags"] & 0x02)
+            rom_info["data_compressed"] = bool(rom_info["flags"] & 0x04)
+            
+        except (IndexError, struct.error) as e:
+            self.logger.warning(f"Error parsing NSO header fields: {e}, using defaults")
+            rom_info.update({
+                "version": 0,
+                "flags": 0,
+                "text_offset": 0, 
+                "text_address": 0,
+                "text_size": 0,
+                "ro_offset": 0,
+                "ro_address": 0,
+                "ro_size": 0,
+                "data_offset": 0,
+                "data_address": 0,
+                "data_size": 0,
+                "bss_size": 0,
+                "size": os.path.getsize(self.rom_path),
+                "title_id": 0,
+                "sdk_version": 0,
+                "text_compressed": False,
+                "ro_compressed": False,
+                "data_compressed": False
+            })
+        
+        # Set title based on filename
+        rom_info["title"] = self.rom_path.stem
+        rom_info["format"] = "NSO"
+        
+        return rom_info
+    
+    def _parse_nsp_header(self, header_data, rom_info):
+        """Parse NSP format header (which is a PFS0 archive)
+        
+        Args:
+            header_data: Header data
+            rom_info: ROM info dictionary to update
+            
+        Returns:
+            Updated ROM info dictionary
+        """
+        try:
+            # PFS0 header structure
+            # 0x00-0x03: Magic "PFS0"
+            # 0x04-0x07: Number of files
+            # 0x08-0x0B: String table size
+            # 0x0C-0x0F: Reserved
+            # 0x10-...: File entry table (each entry is 0x18 bytes)
+            # After file entry table: String table
+            
+            num_files = struct.unpack("<I", header_data[0x04:0x08])[0]
+            string_table_size = struct.unpack("<I", header_data[0x08:0x0C])[0]
+            
+            rom_info.update({
+                "num_files": num_files,
+                "string_table_size": string_table_size,
+                "size": os.path.getsize(self.rom_path),
+                "title_id": 0,  # Will try to extract from metadata if available
+                "sdk_version": 0  # Placeholder
+            })
+            
+            # Extract filenames from string table
+            file_entries_offset = 0x10
+            string_table_offset = file_entries_offset + (num_files * 0x18)
+            
+            if string_table_offset + string_table_size <= len(header_data):
+                string_table = header_data[string_table_offset:string_table_offset + string_table_size]
+                
+                # Extract file entries
+                files = []
+                for i in range(num_files):
+                    entry_offset = file_entries_offset + (i * 0x18)
+                    
+                    # Ensure we have enough data
+                    if entry_offset + 0x18 <= len(header_data):
+                        data_offset = struct.unpack("<Q", header_data[entry_offset:entry_offset+8])[0]
+                        data_size = struct.unpack("<Q", header_data[entry_offset+8:entry_offset+16])[0]
+                        name_offset = struct.unpack("<I", header_data[entry_offset+16:entry_offset+20])[0]
+                        
+                        # Extract filename from string table
+                        if name_offset < string_table_size:
+                            # Find null terminator
+                            end_pos = string_table.find(b'\x00', name_offset)
+                            if end_pos == -1:
+                                end_pos = len(string_table)
+                            
+                            filename = string_table[name_offset:end_pos].decode('utf-8', errors='ignore')
+                            
+                            files.append({
+                                "name": filename,
+                                "offset": data_offset,
+                                "size": data_size
+                            })
+                            
+                            # Check for CNMT file to extract title ID
+                            if filename.endswith('.cnmt.nca'):
+                                rom_info["cnmt_nca_index"] = i
+                
+                rom_info["files"] = files
+                
+                # If we have files, use the first filename for the title if it's a NCA
+                if files and files[0]["name"].endswith('.nca'):
+                    rom_info["main_nca"] = files[0]["name"]
+            
+        except (IndexError, struct.error) as e:
+            self.logger.warning(f"Error parsing NSP header fields: {e}, using defaults")
+            rom_info.update({
+                "num_files": 0,
+                "string_table_size": 0,
+                "size": os.path.getsize(self.rom_path),
+                "title_id": 0,
+                "sdk_version": 0,
+                "files": []
+            })
+        
+        # Set title based on filename
+        rom_info["title"] = self.rom_path.stem
+        rom_info["format"] = "NSP"
+        
+        return rom_info
+    
+    def _parse_xpi_header(self, header_data, rom_info):
+        """Parse XPI format header (fictional format for the ImaginaryConsole)
+        
+        Args:
+            header_data: Header data
+            rom_info: ROM info dictionary to update
+            
+        Returns:
+            Updated ROM info dictionary
+        """
+        try:
+            # XPI is a fictional format, so we'll define a plausible structure
+            # 0x00-0x03: Magic "XPI0"
+            # 0x04-0x07: Version
+            # 0x08-0x0F: Application ID
+            # 0x10-0x17: Title ID
+            # 0x18-0x1B: Flags
+            # 0x1C-0x1F: SDK Version
+            # 0x20-0x23: Number of sections
+            # 0x24-0x27: Header size
+            # 0x28-0x2F: Data offset
+            # 0x30-0x37: Data size
+            # 0x38-0x3F: Reserved
+            # 0x40-0x5F: Title name (32 bytes, null-terminated)
+            # 0x60-0x7F: Publisher name (32 bytes, null-terminated)
+            # 0x80-...: Section table
+            
+            version = struct.unpack("<I", header_data[0x04:0x08])[0]
+            app_id = struct.unpack("<Q", header_data[0x08:0x10])[0]
+            title_id = struct.unpack("<Q", header_data[0x10:0x18])[0]
+            flags = struct.unpack("<I", header_data[0x18:0x1C])[0]
+            sdk_version = struct.unpack("<I", header_data[0x1C:0x20])[0]
+            num_sections = struct.unpack("<I", header_data[0x20:0x24])[0]
+            header_size = struct.unpack("<I", header_data[0x24:0x28])[0]
+            data_offset = struct.unpack("<Q", header_data[0x28:0x30])[0]
+            data_size = struct.unpack("<Q", header_data[0x30:0x38])[0]
+            
+            # Extract title and publisher names (null-terminated strings)
+            title_name_bytes = header_data[0x40:0x60]
+            publisher_bytes = header_data[0x60:0x80]
+            
+            # Find terminating null byte
+            title_end = title_name_bytes.find(b'\x00')
+            if title_end == -1:
+                title_end = len(title_name_bytes)
+            
+            publisher_end = publisher_bytes.find(b'\x00')
+            if publisher_end == -1:
+                publisher_end = len(publisher_bytes)
+            
+            title_name = title_name_bytes[:title_end].decode('utf-8', errors='ignore')
+            publisher = publisher_bytes[:publisher_end].decode('utf-8', errors='ignore')
+            
+            rom_info.update({
+                "version": version,
+                "app_id": app_id,
+                "title_id": title_id,
+                "flags": flags,
+                "sdk_version": sdk_version,
+                "num_sections": num_sections,
+                "header_size": header_size,
+                "data_offset": data_offset,
+                "data_size": data_size,
+                "title_name": title_name,
+                "publisher": publisher,
+                "size": os.path.getsize(self.rom_path)
+            })
+            
+            # Parse section table if available
+            sections = []
+            section_table_offset = 0x80
+            
+            for i in range(num_sections):
+                # Each section entry is 32 bytes
+                section_offset = section_table_offset + (i * 32)
+                
+                if section_offset + 32 <= len(header_data):
+                    section_type = struct.unpack("<I", header_data[section_offset:section_offset+4])[0]
+                    section_flags = struct.unpack("<I", header_data[section_offset+4:section_offset+8])[0]
+                    section_offset_value = struct.unpack("<Q", header_data[section_offset+8:section_offset+16])[0]
+                    section_size = struct.unpack("<Q", header_data[section_offset+16:section_offset+24])[0]
+                    section_reserved = struct.unpack("<Q", header_data[section_offset+24:section_offset+32])[0]
+                    
+                    sections.append({
+                        "type": section_type,
+                        "flags": section_flags,
+                        "offset": section_offset_value,
+                        "size": section_size
+                    })
+            
+            if sections:
+                rom_info["sections"] = sections
+            
+        except (IndexError, struct.error) as e:
+            self.logger.warning(f"Error parsing XPI header fields: {e}, using defaults")
+            rom_info.update({
+                "version": 0,
+                "app_id": 0,
+                "title_id": 0,
+                "flags": 0,
+                "sdk_version": 0,
+                "num_sections": 0,
+                "header_size": 0x80,
+                "data_offset": 0x80,
+                "data_size": os.path.getsize(self.rom_path) - 0x80,
+                "title_name": "",
+                "publisher": "",
+                "size": os.path.getsize(self.rom_path)
+            })
+        
+        # Use title from header if available, otherwise from filename
+        if rom_info.get("title_name"):
+            rom_info["title"] = rom_info["title_name"]
+        else:
+            rom_info["title"] = self.rom_path.stem
+            
+        rom_info["format"] = "XPI"
         
         return rom_info
     
@@ -286,7 +672,16 @@ class RomLoader:
             
             # Extract and decrypt the header (first 0x400 bytes)
             header_data = rom_data[:0x400]
-            decrypted_header = self._decrypt_header(header_data)
+            
+            # Detect format based on magic
+            format_magic = header_data[:4]
+            
+            # Only decrypt header for NCA and NSP formats
+            if format_magic == self.NCA_MAGIC or format_magic == self.NSP_MAGIC:
+                decrypted_header = self._decrypt_header(header_data)
+            else:
+                # NRO, NSO, and XPI formats don't need header decryption
+                decrypted_header = header_data
             
             # Parse the header
             self.rom_info = self._parse_header(decrypted_header)
@@ -297,11 +692,12 @@ class RomLoader:
             self.rom_info["path"] = str(self.rom_path)
             self.rom_info["sha256"] = hashlib.sha256(rom_data).hexdigest()
             
-            # In a real implementation, we would decrypt the entire ROM here
-            # For the emulator, we'll use the encrypted data for demonstration
+            # For NSP files, we might need to extract and handle individual NCA files
+            # This would be implemented here in a real emulator
             
             self.logger.info(f"Loaded ROM: {self.rom_info['title']} "
-                             f"(Size: {self.rom_info['file_size']/1024/1024:.2f} MB)")
+                             f"({self.rom_info.get('format', 'Unknown Format')}, "
+                             f"Size: {self.rom_info['file_size']/1024/1024:.2f} MB)")
             
             return rom_data, self.rom_info
             

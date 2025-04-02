@@ -158,5 +158,5 @@ This project is released under the MIT License. See the LICENSE file for details
 ## Disclaimer
 
 This is an educational project for learning about hardware emulation concepts. The console it 
-emulates is imaginary and does not actually exist. No real console firmware or ROMs will work 
-with this emulator, nor should you attempt to use any copyrighted materials with it. 
+emulates is imaginary (i.e. not public) and does not actually exist. No real console firmware or ROMs will work 
+with this emulator (sadly), nor should you attempt to use any copyrighted materials you don't own with it. This is all built on rumored specs - so expect inaccuracies and bugs, even with homebrew.
