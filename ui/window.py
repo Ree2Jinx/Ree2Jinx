@@ -59,6 +59,7 @@ class Window:
         # Assets
         self.assets_path = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "assets"
         self.logo = None
+        self.icon = None
         self.font = None
         self.load_assets()
         
@@ -95,7 +96,13 @@ class Window:
             logo_path = self.assets_path / "logo.png"
             if logo_path.exists():
                 self.logo = pygame.image.load(str(logo_path))
-                self.logger.debug(f"Loaded logo: {logo_path}")
+                self.logger.debug(f"Loaded background: {logo_path}")
+            
+            # Load icon if available
+            icon_path = self.assets_path / "icon.png"
+            if icon_path.exists():
+                self.icon = pygame.image.load(str(icon_path))
+                self.logger.debug(f"Loaded icon: {icon_path}")
             
             # Initialize font
             pygame.font.init()
@@ -124,9 +131,15 @@ class Window:
         # Create the window
         self.surface = pygame.display.set_mode((self.width, self.height), flags, vsync=self.vsync)
         
-        # Set icon if available
-        if self.logo:
-            pygame.display.set_icon(self.logo)
+        # Set window icon - load it directly here for simplicity
+        try:
+            icon_path = self.assets_path / "icon.png"
+            if icon_path.exists():
+                self.icon = pygame.image.load(str(icon_path))
+                pygame.display.set_icon(self.icon)
+                self.logger.info(f"Successfully set window icon from: {icon_path}")                self.logger.info("Using logo as window icon (icon.png not found)")
+        except Exception as e:
+            self.logger.error(f"Error setting window icon: {e}")
         
         # Initialize OpenGL context
         self._init_gl()
@@ -478,7 +491,7 @@ class Window:
         gl.glDeleteTextures(1, [text_texture])
         
         # Draw instructions
-        instructions = "Press Ctrl+O to open a ROM file"
+        instructions = "Use cli arguments to open a ROM file"
         inst_surface = self.font.render(instructions, True, (200, 200, 200))
         inst_texture = self._create_texture_from_surface(inst_surface)
         inst_width = inst_surface.get_width() * self.scale_x

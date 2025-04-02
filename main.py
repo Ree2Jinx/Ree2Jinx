@@ -48,6 +48,29 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def ensure_assets_exist():
+    """Ensure necessary asset files exist"""
+    logger = logging.getLogger("ImaginaryConsole.Assets")
+    assets_path = Path(os.path.dirname(os.path.abspath(__file__))) / "assets"
+    assets_path.mkdir(parents=True, exist_ok=True)
+    
+    # Check if icon.png exists, create it if not
+    icon_path = assets_path / "icon.png"
+    if not icon_path.exists():
+        logger.info("Creating default icon.png")
+        try:
+            # Create a default icon using pygame
+            pygame.init()
+            icon_surface = pygame.Surface((32, 32))
+            icon_surface.fill((0, 0, 128))  # Blue background
+            pygame.draw.circle(icon_surface, (255, 255, 255), (16, 16), 12)  # White circle
+            pygame.draw.rect(icon_surface, (200, 0, 0), (12, 12, 8, 8))  # Red square
+            pygame.image.save(icon_surface, str(icon_path))
+            logger.info(f"Created default icon at {icon_path}")
+        except Exception as e:
+            logger.error(f"Failed to create default icon: {e}")
+
+
 def main():
     """Main entry point for the emulator"""
     logger = setup_logging()
@@ -69,6 +92,9 @@ def main():
         # Set up Pygame to ignore key repeat events
         pygame.init()
         pygame.key.set_repeat(0)
+        
+        # Ensure asset files exist (including icon)
+        ensure_assets_exist()
         
         # Setup firmware and keys
         firmware_manager = FirmwareManager(args.firmware or config.firmware_path)
