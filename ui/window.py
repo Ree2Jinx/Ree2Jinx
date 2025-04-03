@@ -11,6 +11,7 @@ import OpenGL.GL as gl
 from pathlib import Path
 import numpy as np
 import platform
+import subprocess
 
 from ui.gui import FileDialog, MessageDialog, MouseSettingsPanel
 
@@ -35,6 +36,9 @@ class Window:
         # Initialize pygame
         pygame.init()
         
+        # Disable key repeat to avoid multiple triggers
+        pygame.key.set_repeat(0)  # Disable key repeat completely
+        
         # Set window properties from config
         self.width, self.height = config.window_size
         self.fullscreen = config.fullscreen
@@ -55,6 +59,7 @@ class Window:
         # Assets
         self.assets_path = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "assets"
         self.logo = None
+        self.icon = None
         self.font = None
         self.load_assets()
         
@@ -68,6 +73,17 @@ class Window:
         # Create window and renderer
         self._create_window()
         
+        # Dialog state tracking
+        self.dialog_active = False
+        self.last_dialog_time = 0
+        
+        # Key tracking to handle repeats
+        self.ctrl_o_pressed = False
+        self.ctrl_o_handled = False
+        
+        # Add event filter to catch key events early
+        pygame.event.set_allowed([pygame.QUIT, pygame.KEYDOWN, pygame.KEYUP, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP])
+        
         self.logger.info(f"Window initialized: {self.width}x{self.height}, fullscreen={self.fullscreen}")
     
     def load_assets(self):
@@ -80,7 +96,13 @@ class Window:
             logo_path = self.assets_path / "logo.png"
             if logo_path.exists():
                 self.logo = pygame.image.load(str(logo_path))
-                self.logger.debug(f"Loaded logo: {logo_path}")
+                self.logger.debug(f"Loaded background: {logo_path}")
+            
+            # Load icon if available
+            icon_path = self.assets_path / "icon.png"
+            if icon_path.exists():
+                self.icon = pygame.image.load(str(icon_path))
+                self.logger.debug(f"Loaded icon: {icon_path}")
             
             # Initialize font
             pygame.font.init()
@@ -109,9 +131,15 @@ class Window:
         # Create the window
         self.surface = pygame.display.set_mode((self.width, self.height), flags, vsync=self.vsync)
         
-        # Set icon if available
-        if self.logo:
-            pygame.display.set_icon(self.logo)
+        # Set window icon - load it directly here for simplicity
+        try:
+            icon_path = self.assets_path / "icon.png"
+            if icon_path.exists():
+                self.icon = pygame.image.load(str(icon_path))
+                pygame.display.set_icon(self.icon)
+                self.logger.info(f"Successfully set window icon from: {icon_path}")                self.logger.info("Using logo as window icon (icon.png not found)")
+        except Exception as e:
+            self.logger.error(f"Error setting window icon: {e}")
         
         # Initialize OpenGL context
         self._init_gl()
@@ -181,6 +209,25 @@ class Window:
         """
         events = pygame.event.get()
         
+        # Handle Ctrl+O specially to prevent duplicates
+        keys = pygame.key.get_pressed()
+        ctrl_pressed = keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL] or keys[pygame.K_LMETA] or keys[pygame.K_RMETA]
+        o_pressed = keys[pygame.K_o]
+        
+        # Detect Ctrl+O state change (pressed but not yet handled)
+        if ctrl_pressed and o_pressed:
+            if not self.ctrl_o_pressed:
+                self.ctrl_o_pressed = True
+                self.ctrl_o_handled = False
+        else:
+            self.ctrl_o_pressed = False
+        
+        # Handle Ctrl+O only once per press and not during dialogs
+        if self.ctrl_o_pressed and not self.ctrl_o_handled and not self.dialog_active:
+            self.ctrl_o_handled = True
+            self._handle_open_rom()
+        
+        # Process regular events
         for event in events:
             if event.type == pygame.QUIT:
                 return False
@@ -221,6 +268,107 @@ class Window:
             self.mouse_settings_panel.update(events)
         
         return True
+    
+    def _handle_open_rom(self):
+        """Safely handle opening ROM dialog to prevent multiple calls"""
+        # Check cooldown timer
+        current_time = time.time()
+        if current_time - self.last_dialog_time < 1.0:
+            self.logger.debug("Ignoring Ctrl+O due to cooldown")
+            return
+            
+        self.last_dialog_time = current_time
+        self.dialog_active = True
+        try:
+            # Log only once
+            self.logger.info("Opening ROM file dialog")
+            self._open_rom_file_direct()
+        except Exception as e:
+            self.logger.error(f"Error handling open ROM dialog: {e}", exc_info=True)
+        finally:
+            self.dialog_active = False
+    
+    def _open_rom_file_direct(self):
+        """Open a ROM file using direct commands to avoid duplicate triggers"""
+        # Import locally to avoid circular imports
+        from system.rom_loader import RomLoader
+        
+        # On macOS, use direct AppleScript instead of going through FileDialog
+        is_macos = platform.system() == 'Darwin'
+        rom_path = None
+        
+        if is_macos:
+            try:
+                # Construct a direct AppleScript command
+                apple_script = '''
+                tell application "System Events"
+                    activate
+                    set theFile to POSIX path of (choose file with prompt "Open ROM File")
+                    return theFile
+                end tell
+                '''
+                
+                # Execute the command
+                result = subprocess.run(['osascript', '-e', apple_script], 
+                                       capture_output=True, text=True)
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    rom_path = result.stdout.strip()
+            except Exception as e:
+                self.logger.error(f"Error with AppleScript dialog: {e}")
+        else:
+            # For non-macOS, use the regular FileDialog
+            from ui.gui import FileDialog
+            
+            # Define ROM file types
+            rom_filetypes = [
+                ("ROM Files", [".rom", ".bin", ".iso"]),
+                ("All Files", [".*"])
+            ]
+            
+            # Show file dialog
+            rom_path = FileDialog.open_file(
+                title="Open ROM File",
+                filetypes=rom_filetypes,
+                initial_dir=str(self.config.roms_path)
+            )
+        
+        # If a file was selected, load it
+        if rom_path:
+            self.logger.info(f"Selected ROM file: {rom_path}")
+            self._load_selected_rom(rom_path)
+    
+    def _load_selected_rom(self, rom_path):
+        """Load a selected ROM file"""
+        # Import locally to avoid circular imports
+        from ui.gui import MessageDialog
+        from system.rom_loader import RomLoader
+        
+        try:
+            # Access the system instance
+            if not hasattr(self, "_running_system") or self._running_system is None:
+                self.logger.error("No system instance available")
+                MessageDialog.show_error("Error", "Cannot load ROM: system not initialized")
+                return
+            
+            system = self._running_system
+            
+            # Create ROM loader and load the ROM
+            rom_loader = RomLoader(rom_path, self.config.keys_path)
+            if system.load_rom(rom_loader):
+                self.logger.info(f"ROM loaded successfully: {rom_path}")
+            else:
+                self.logger.error(f"Failed to load ROM: {rom_path}")
+                MessageDialog.show_error("Error", f"Failed to load ROM: {rom_path}")
+        except Exception as e:
+            self.logger.error(f"Error loading ROM: {e}", exc_info=True)
+            MessageDialog.show_error("Error", f"Error loading ROM: {e}")
+    
+    def _open_rom_file(self):
+        """Legacy method for opening ROM files via FileDialog"""
+        # This method is kept for backward compatibility
+        # For new code, use _open_rom_file_direct instead
+        self._open_rom_file_direct()
     
     def update(self, system):
         """Update the window state
@@ -343,7 +491,7 @@ class Window:
         gl.glDeleteTextures(1, [text_texture])
         
         # Draw instructions
-        instructions = "Press Ctrl+O to open a ROM file"
+        instructions = "Use cli arguments to open a ROM file"
         inst_surface = self.font.render(instructions, True, (200, 200, 200))
         inst_texture = self._create_texture_from_surface(inst_surface)
         inst_width = inst_surface.get_width() * self.scale_x
@@ -523,6 +671,7 @@ class Window:
         """
         self.running = True
         self.frame_time = time.time()
+        self._running_system = system  # Store reference to the system for use in other methods
         
         # Start controller polling if input manager is available and we're not on macOS
         is_macos = platform.system() == 'Darwin'
@@ -562,6 +711,7 @@ class Window:
                 self.input_manager.stop_polling()
             
             # Clean up pygame
+            self.close()
             pygame.quit()
             
             self.logger.info("Window closed")

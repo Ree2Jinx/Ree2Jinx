@@ -127,10 +127,10 @@ class System:
         self.logger.info(f"Hardware frequencies updated for {'docked' if self.config.docked_mode else 'handheld'} mode")
     
     def load_bios(self, firmware_manager):
-        """Load system BIOS and boot code
+        """Load system BIOS and boot code from NCA firmware files
         
         Args:
-            firmware_manager: Firmware manager containing the firmware files
+            firmware_manager: Firmware manager containing the NCA firmware files
             
         Returns:
             True if BIOS was loaded, False otherwise
@@ -140,21 +140,34 @@ class System:
             return False
         
         try:
-            # Load BOOT0 (primary BIOS)
-            boot0_data = firmware_manager.get_firmware_data("BOOT0")
-            if not boot0_data:
-                self.logger.error("BOOT0 firmware not found")
+            # Get PROGRAM NCA (primary boot code)
+            program_nca_ids = firmware_manager.get_nca_by_type("PROGRAM")
+            if not program_nca_ids:
+                self.logger.error("PROGRAM NCA firmware not found")
+                return False
+            
+            # Get program data from the first PROGRAM NCA
+            program_data = firmware_manager.get_nca_data(program_nca_ids[0])
+            if not program_data:
+                self.logger.error("Failed to load PROGRAM NCA data")
                 return False
             
             # Allocate memory for BIOS and load it
-            boot0_addr = self.memory.allocate(len(boot0_data), name="BOOT0")
-            self.memory.write(boot0_addr, boot0_data)
-            self.memory_map['boot_rom'] = boot0_addr
+            bios_addr = self.memory.allocate(len(program_data), name="BIOS_PROGRAM")
+            self.memory.write(bios_addr, program_data)
+            self.memory_map['boot_rom'] = bios_addr
             
             # Set CPU to start executing from BIOS
-            self.cpu.set_program_counter(boot0_addr)
+            self.cpu.set_program_counter(bios_addr)
             
-            self.logger.info(f"BIOS loaded successfully at 0x{boot0_addr:08X}")
+            # For backward compatibility
+            if hasattr(firmware_manager, "get_firmware_data"):
+                # Try loading legacy format via compatibility method
+                legacy_data = firmware_manager.get_firmware_data("BOOT0")
+                if legacy_data:
+                    self.logger.info("Legacy BOOT0 data accessed via compatibility layer")
+            
+            self.logger.info(f"BIOS loaded successfully from NCA at 0x{bios_addr:08X}")
             return True
             
         except Exception as e:
@@ -164,31 +177,62 @@ class System:
     def load_rom(self, rom_loader):
         """Load a ROM into the system memory"""
         try:
+            if not rom_loader or not hasattr(rom_loader, 'rom_path'):
+                self.logger.error("Invalid ROM loader")
+                return False
+                
             self.logger.info(f"Loading ROM: {rom_loader.rom_path}")
-            rom_data, rom_info = rom_loader.load()
             
+            # Check if paths exist
+            if not rom_loader.rom_path.exists():
+                self.logger.error(f"ROM file does not exist: {rom_loader.rom_path}")
+                return False
+                
+            if not rom_loader.keys_manager.keys_path.exists():
+                self.logger.error(f"Keys file does not exist: {rom_loader.keys_manager.keys_path}")
+                return False
+            
+            # Load the ROM
+            try:
+                rom_data, rom_info = rom_loader.load()
+            except Exception as e:
+                self.logger.error(f"Error in ROM loader: {e}", exc_info=True)
+                return False
+            
+            if not rom_data or len(rom_data) == 0:
+                self.logger.error("ROM data is empty")
+                return False
+                
             # Store ROM information
             self.rom_info = rom_info
             
             # Allocate memory for the ROM
-            rom_addr = self.memory.allocate(len(rom_data), name=f"ROM_{rom_info['title']}")
-            self.memory.write(rom_addr, rom_data)
-            self.memory_map['rom_base'] = rom_addr
+            try:
+                rom_addr = self.memory.allocate(len(rom_data), name=f"ROM_{rom_info['title']}")
+                self.memory.write(rom_addr, rom_data)
+                self.memory_map['rom_base'] = rom_addr
+            except Exception as e:
+                self.logger.error(f"Error allocating memory for ROM: {e}", exc_info=True)
+                return False
             
             # Store ROM address for CPU/GPU access
             if self.memory_map['boot_rom'] is None:
                 # If BIOS isn't loaded, directly start executing the ROM
                 self.cpu.set_program_counter(rom_addr)
             
-            # Initialize ROM-specific memory regions
-            self._init_rom_memory(rom_info)
+            try:
+                # Initialize ROM-specific memory regions
+                self._init_rom_memory(rom_info)
+            except Exception as e:
+                self.logger.error(f"Error initializing ROM memory regions: {e}", exc_info=True)
+                return False
             
             self.rom_loaded = True
             self.logger.info(f"ROM loaded successfully: {rom_info['title']} at 0x{rom_addr:08X}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to load ROM: {e}")
+            self.logger.error(f"Failed to load ROM: {e}", exc_info=True)
             return False
     
     def _init_rom_memory(self, rom_info):
