@@ -484,7 +484,7 @@ class Window:
         gl.glDeleteTextures(1, [text_texture])
         
         # Draw instructions
-        instructions = "Use cli arguments to open a ROM file"
+        instructions = "Use cli arguments to open a ROM file, keys, and firmware."
         inst_surface = self.font.render(instructions, True, (200, 200, 200))
         inst_texture = self._create_texture_from_surface(inst_surface)
         inst_width = inst_surface.get_width() * self.scale_x
