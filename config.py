@@ -55,7 +55,7 @@ class Config:
         self.config_file = self.config_dir / "config.json"
         self.roms_path = self.config_dir / "roms"
         self.firmware_path = self.config_dir / "firmware"
-        self.keys_path = self.config_dir / "keys"  # Now points to the keys directory, not a specific file
+        self.keys_path = self.config_dir / "keys" / "prod.keys"
         self.saves_path = self.config_dir / "saves"
         
         # Default settings

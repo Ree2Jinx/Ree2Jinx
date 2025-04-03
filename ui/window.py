@@ -102,7 +102,10 @@ class Window:
             icon_path = self.assets_path / "icon.png"
             if icon_path.exists():
                 self.icon = pygame.image.load(str(icon_path))
-                self.logger.debug(f"Loaded icon: {icon_path}")
+                pygame.display.set_icon(self.icon)
+                self.logger.info(f"Successfully set window icon from: {icon_path}")
+            else:
+                self.logger.info("Using logo as window icon (icon.png not found)")
             
             # Initialize font
             pygame.font.init()
@@ -130,16 +133,6 @@ class Window:
         
         # Create the window
         self.surface = pygame.display.set_mode((self.width, self.height), flags, vsync=self.vsync)
-        
-        # Set window icon - load it directly here for simplicity
-        try:
-            icon_path = self.assets_path / "icon.png"
-            if icon_path.exists():
-                self.icon = pygame.image.load(str(icon_path))
-                pygame.display.set_icon(self.icon)
-                self.logger.info(f"Successfully set window icon from: {icon_path}")                self.logger.info("Using logo as window icon (icon.png not found)")
-        except Exception as e:
-            self.logger.error(f"Error setting window icon: {e}")
         
         # Initialize OpenGL context
         self._init_gl()

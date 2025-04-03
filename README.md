@@ -30,8 +30,7 @@ The emulated console has the following hardware specifications:
 - Provides joycon and pro controller emulation
 - Supports Xbox controllers as pro controllers
 - Mouse and keyboard input support
-- Firmware loading with NCA file support
-- ROM loading with decryption
+- Firmware and ROM loading with decryption
 - Save state functionality
 - OpenGL-accelerated rendering
 
@@ -70,32 +69,10 @@ python main.py
 The following command-line options are available:
 
 - `--rom PATH`: Path to a ROM file to load
-- `--keys PATH`: Path to a keys directory/file for ROM decryption
-- `--firmware PATH`: Path to firmware directory containing .nca files
+- `--keys PATH`: Path to a keys file for ROM decryption
+- `--firmware PATH`: Path to firmware directory
 - `--docked`: Start in docked mode instead of handheld mode
 - `--fullscreen`: Start in fullscreen mode
-
-### Firmware Structure
-
-The emulator now uses .nca files for firmware. These files should be placed in the firmware directory:
-
-- The firmware directory should contain .nca files with the following types:
-  - PROGRAM (required): Contains the main system program code
-  - CONTROL (required): Contains control data for the system
-  - DATA (required): Contains system data
-  - META (required): Contains metadata including version information
-  - PUBLIC_DATA (optional): Contains additional public data
-
-Example firmware directory structure:
-```
-firmware/
-  ├── system_program.nca (PROGRAM type)
-  ├── system_control.nca (CONTROL type)
-  ├── system_data.nca (DATA type)
-  ├── system_meta.nca (META type)
-  ├── system_public.nca (PUBLIC_DATA type, optional)
-  └── firmware_info.json (automatically generated)
-```
 
 ### Controls
 
@@ -162,13 +139,12 @@ The "New Joycons" feature mouse input integration:
 - `input/`: Input handling
   - `controller_manager.py`: Controller detection and input management
 - `system/`: System-level functionality
-  - `firmware_manager.py`: Firmware loading and verification (supports .nca files)
+  - `firmware_manager.py`: Firmware loading and verification
   - `rom_loader.py`: ROM loading and decryption
 - `ui/`: User interface
   - `window.py`: Main window and rendering
   - `gui.py`: UI utilities and file dialogs
 - `assets/`: Graphics and other assets
-- `keys/`: Dummy keys. (*Should* be replacable with Switch 2 keys.)
 
 ## Project Status
 
@@ -182,5 +158,5 @@ This project is released under the MIT License. See the LICENSE file for details
 ## Disclaimer
 
 This is an educational project for learning about hardware emulation concepts. The console it 
-emulates is imaginary (i.e. not public) and does not actually exist. No real console firmware or ROMs will work 
-with this emulator (sadly), nor should you attempt to use any copyrighted materials you don't own with it. This is all built on rumored specs - so expect inaccuracies and bugs, even with homebrew.
+emulates is imaginary and does not actually exist. No real console firmware or ROMs will work 
+with this emulator, nor should you attempt to use any copyrighted materials with it. 
