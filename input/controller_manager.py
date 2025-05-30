@@ -753,16 +753,16 @@ class ControllerManager:
                         ctrl.update_axis(100, rel_x * gyro_scale)  # Virtual axis for mouse X
                         ctrl.update_axis(101, rel_y * gyro_scale)  # Virtual axis for mouse Y
                         
-                        # We also update motion data to simulate gyro movement
+                        # # We also update motion data to simulate gyro movement
                         current_accel = ctrl.accelerometer
                         current_gyro = ctrl.gyroscope
                         
-                        # Create new gyro values based on mouse movement
-                        # We're simulating rotation around X and Y axes
+                        # # Create new gyro values based on mouse movement
+                        # # We're simulating rotation around X and Y axes
                         new_gyro = (
-                            current_gyro[0] + (rel_y * gyro_scale), 
-                            current_gyro[1] + (rel_x * gyro_scale),
-                            current_gyro[2]
+                             current_gyro[0] + (rel_y * gyro_scale), 
+                             current_gyro[1] + (rel_x * gyro_scale),
+                             current_gyro[2]
                         )
                         
                         # Update the motion data
