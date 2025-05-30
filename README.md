@@ -1,6 +1,6 @@
 # Ree2Jinx (Codename ImaginaryConsoleEmulator)
 
-Attempting to make a NS2 emulator pre-release.
+Attempting to make a NS2 emulator pre-release. (And we technically barely did it!)
 
 This project is for educational purposes and demonstrates various emulation concepts.
 
@@ -30,6 +30,8 @@ The emulated console has the following hardware specifications:
 - Provides joycon and pro controller emulation
 - Supports Xbox controllers as pro controllers
 - Mouse and keyboard input support
+- Advanced controller input management with support for multiple controller types, including Joy-Cons, Pro Controllers, and Xbox controllers.
+- Customizable controller mapping profiles.
 - Firmware and ROM loading with decryption
 - Save state functionality
 - OpenGL-accelerated rendering
@@ -86,7 +88,7 @@ The following command-line options are available:
 - F1: Share button
 - Space: Left stick button
 - WASD: Left analog stick
-- Mouse: Right analog stick (when locked)
+- Mouse movement (when locked): Primarily controls the right analog stick. See 'New Joycons Mouse Support' for additional gyro mapping.
 
 #### Mouse Controls
 
@@ -94,15 +96,6 @@ The following command-line options are available:
 - Left/Right/Middle click (when mouse is locked): ZR/ZL/Right stick buttons
 - Mouse wheel up/down: Wheel events
 - F2: Open Mouse Settings panel to adjust sensitivity and toggle mouse options
-
-#### Direct Mouse Support
-
-The emulator supports the mouse as a direct input device for the imaginary console:
-
-- When "Enable as System Mouse" is enabled (toggled in Mouse Settings), the mouse becomes a dedicated input device for the system
-- Mouse movements are sent directly to the system as raw mouse input rather than being mapped to controller buttons
-- Mouse buttons are recognized as their own discrete inputs separate from controller buttons
-- Both absolute position (cursor location) and relative motion (movement) data are tracked
 
 #### Controller Support
 
@@ -113,12 +106,13 @@ The emulator supports various controllers through SDL:
 - Pro controllers
 - Xbox controllers (mapped as pro controllers)
 - Other SDL-compatible controllers
+- Supports customizable controller profiles (JSON format) for button and axis mappings, typically loaded from a `controller_profiles` subdirectory within your configuration path.
 
 ### New Joycons Mouse Support
 
 The "New Joycons" feature mouse input integration:
 
-- When mouse is locked, its movement is mapped to gyro controls
+- When mouse is locked **and 'Enable for Joycons' is active in Mouse Settings**, mouse movement is *additionally* mapped to simulate gyro controls for Right Joy-Cons or Joy-Con Pairs. This is alongside its primary function of controlling the right analog stick.
 - Mouse buttons are mapped to Joycon buttons:
   - Left click: A button
   - Right click: B button
