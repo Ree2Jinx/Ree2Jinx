@@ -1,6 +1,6 @@
 # Ree2Jinx (Codename ImaginaryConsoleEmulator)
 
-Attempting to make a NS2 emulator pre-release. (And we technically barely did it!)
+Attempting to make an emulator of an "imaginary" console. I say "imaginary" because I'm pretty much pulling the specs out of my rear. It is 100% not a certain console by a specific red company with a plumber mascot! No, not at all!
 
 This project is for educational purposes and demonstrates various emulation concepts.
 
@@ -22,6 +22,19 @@ The emulated console has the following hardware specifications:
   - GPU: 1007.25MHz (~3.09 TFLOPS)
   - Memory Frequency: 6400MHz
   - Memory Bandwidth: 102.4 GB/s
+
+## Will you improve it after Ninento releases the Switch 2?
+
+***Nintendo? Nintendo who?***
+
+Just kidding! We will continue to improve this emulator after Nintendo releases their console because we are:
+
+1. Confident that the specs will be different than that of this imaginary emulator.
+2. Confident that Nintendo learned their security lessons with Switch 1.
+3. Making an educational project. Even if the big N makes a VERY similar console, say perhaps a second Switch, we can say "oooh we predicted that" and carry on!
+4. Not harming Nintendo in any way. We don't include the keys or ROMs, and we purposefully nerfed the emulator by writing it in Python so it will run so slow nobody will want to play it until about when the Switch 3 comes out! (~10 years from now.)
+
+Note it is NOT our goal to make it slow beyond writing it in Python, and we even added bare-minimum CUDA support for all you NVIDIA users!
 
 ## Features
 
@@ -151,6 +164,4 @@ This project is released under the MIT License. See the LICENSE file for details
 
 ## Disclaimer
 
-This is an educational project for learning about hardware emulation concepts. The console it 
-emulates is imaginary and does not actually exist. No real console firmware or ROMs will work 
-with this emulator, nor should you attempt to use any copyrighted materials with it. 
+This project is released as an educational project. You should not attempt to use any copyrighted materials with this emulator. To the big red company: Don't sue please! 
