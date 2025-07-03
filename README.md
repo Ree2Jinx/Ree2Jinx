@@ -23,7 +23,7 @@ The emulated console has the following hardware specifications:
   - Memory Frequency: 6400MHz
   - Memory Bandwidth: 102.4 GB/s
 
-## Will you improve it after Ninento releases the Switch 2?
+## Will you improve it after Ninten\*o releases the Switch 2?
 
 ***Nintendo? Nintendo who?***
 
